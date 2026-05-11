@@ -8,7 +8,7 @@ import { createRequire } from "node:module";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const _require = createRequire(import.meta.url);
 const buildKuromoji = _require("./kuromoji-init.cjs");
-const DICT_FILE = resolve(__dirname, "../../jmdict-all-3.6.2.json");
+const DICT_FILE = resolve(__dirname, "../jmdict-all-3.6.2.json");
 const SENTENCES_FILE = resolve(__dirname, "../data/sentences-ja-zh.json");
 const ZH_FILE = resolve(__dirname, "../data/glosses-zh.json");
 const DB_FILE = resolve(__dirname, "../dist/dict.db");

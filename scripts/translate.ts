@@ -4,7 +4,7 @@ import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const INPUT_FILE = resolve(__dirname, "../../jmdict-all-*.json");
+const INPUT_FILE = resolve(__dirname, "../jmdict-all-*.json");
 const OUTPUT_FILE = resolve(__dirname, "../data/glosses-zh.json");
 
 interface TranslatedEntry {
@@ -14,7 +14,7 @@ interface TranslatedEntry {
 
 // Resolve the actual jmdict JSON file (glob for wildcard)
 import { readdirSync } from "node:fs";
-const dictDir = resolve(__dirname, "../../");
+const dictDir = resolve(__dirname, "../");
 const dictFiles = readdirSync(dictDir).filter(f => f.startsWith("jmdict-all-") && f.endsWith(".json"));
 if (dictFiles.length === 0) {
   console.error("No jmdict-all-*.json found in", dictDir);
