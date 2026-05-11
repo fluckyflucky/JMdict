@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JMdict</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif; background: #fafafa; padding: 20px; color: #333; }
+.container { max-width: 720px; margin: 0 auto; }
+h1 { text-align: center; margin-bottom: 24px; font-size: 28px; color: #1a1a1a; }
+.search-box { display: flex; gap: 8px; margin-bottom: 24px; position: sticky; top: 0; z-index: 10; background: #fafafa; padding: 12px 0; }
+input { flex: 1; padding: 14px 18px; font-size: 18px; border: 2px solid #e0e0e0; border-radius: 10px; outline: none; transition: border-color 0.2s; min-width: 0; }
+input:focus { border-color: #5b8def; }
+select { padding: 10px 12px; font-size: 14px; border: 2px solid #e0e0e0; border-radius: 10px; outline: none; background: white; color: #555; }
+button { padding: 14px 28px; font-size: 16px; background: #5b8def; color: white; border: none; border-radius: 10px; cursor: pointer; font-weight: 500; transition: background 0.2s; white-space: nowrap; }
+button:hover { background: #4a7de0; }
+.entry { background: white; border-radius: 10px; padding: 18px; margin-bottom: 14px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+.head { margin-bottom: 10px; }
+.kanji { font-size: 26px; font-weight: bold; color: #1a1a1a; }
+.reading { font-size: 15px; color: #777; margin-left: 10px; }
+.sense { margin-top: 10px; padding-left: 14px; border-left: 3px solid #e8e8e8; }
+.pos { font-size: 11px; color: #999; font-style: italic; margin-bottom: 2px; }
+.gloss-en { font-size: 14px; color: #555; }
+.gloss-zh { font-size: 15px; color: #222; font-weight: 500; margin-top: 2px; }
+.examples { margin-top: 12px; padding-top: 10px; border-top: 1px solid #f0f0f0; }
+.example { margin-top: 8px; font-size: 13px; line-height: 1.8; }
+.example .ja { display: block; color: #333; }
+.example .zh { display: block; color: #666; }
+.empty { text-align: center; color: #aaa; margin-top: 60px; font-size: 16px; }
+.count { text-align: center; color: #bbb; font-size: 13px; margin-bottom: 12px; }
+.loading { text-align: center; color: #999; margin-top: 60px; font-size: 16px; }
+
+@media (max-width: 600px) {
+  body { padding: 12px; }
+  h1 { font-size: 22px; margin-bottom: 16px; }
+  .search-box { flex-wrap: wrap; gap: 6px; }
+  input { font-size: 16px; padding: 12px 14px; }
+  select { flex: 1; }
+  button { flex: 1; padding: 12px; }
+  .entry { padding: 14px; margin-bottom: 10px; }
+  .kanji { font-size: 22px; }
+  .reading { font-size: 14px; }
+}
+</style>
+</head>
+<body>
+<div class="container">
+<h1>JMdict</h1>
+<div class="search-box">
+  <input id="q" type="text" placeholder="日本語・中文・English..." autofocus disabled>
+  <select id="limit">
+    <option value="20">20件</option>
+    <option value="50" selected>50件</option>
+    <option value="100">100件</option>
+    <option value="200">200件</option>
+    <option value="500">500件</option>
+  </select>
+  <button onclick="doSearch()" disabled id="btn">検索</button>
+</div>
+<div id="count"></div>
+<div id="results"><p class="loading">Loading dictionary...</p></div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.11.0/sql-wasm.min.js"></script>
+<script>
+let db = null;
+
+async function initDB() {
+  const SQL = await initSqlJs({
+    locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.11.0/${file}`
+  });
+  const response = await fetch('dict.db');
+  const buf = await response.arrayBuffer();
+  db = new SQL.Database(new Uint8Array(buf));
+  document.getElementById('q').disabled = false;
+  document.getElementById('btn').disabled = false;
+  document.getElementById('results').innerHTML = '';
+  document.getElementById('q').focus();
+}
+
+initDB();
+
+const input = document.getElementById('q');
+input.addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(); });
+
+let timer;
+input.addEventListener('input', () => {
+  clearTimeout(timer);
+  timer = setTimeout(doSearch, 300);
+});
+
+function doSearch() {
+  if (!db) return;
+  const q = input.value.trim();
+  if (!q) {
+    document.getElementById('results').innerHTML = '';
+    document.getElementById('count').innerHTML = '';
+    return;
+  }
+  const limit = parseInt(document.getElementById('limit').value);
+  const entries = search(q, limit);
+  render(entries);
+}
+
+function search(query, limit) {
+  const results = [];
+  const q = query.replace(/'/g, "''");
+
+  // 1. Prefix match on kanji/readings (uses index)
+  const prefix = db.exec(
+    "SELECT kanji, readings, senses_json FROM entries WHERE kanji LIKE ? OR readings LIKE ? OR romaji LIKE ? LIMIT ?",
+    [q + '%', q + '%', q + '%', limit]
+  );
+  if (prefix.length && prefix[0].values.length) {
+    for (const row of prefix[0].values) results.push(parseRow(row));
+  }
+
+  // 2. FTS search for English/Chinese
+  if (results.length < limit) {
+    const remaining = limit - results.length;
+    const ftsQuery = query.replace(/['"]/g, '');
+    try {
+      const existing = new Set(results.map(r => r.kanji.join(',') + r.readings.join(',')));
+      const fts = db.exec(
+        `SELECT e.kanji, e.readings, e.senses_json FROM entries_fts f
+         JOIN entries e ON e.rowid = f.rowid
+         WHERE entries_fts MATCH '"${ftsQuery}"'
+         LIMIT ?`,
+        [remaining]
+      );
+      if (fts.length && fts[0].values.length) {
+        for (const row of fts[0].values) {
+          const entry = parseRow(row);
+          const key = entry.kanji.join(',') + entry.readings.join(',');
+          if (!existing.has(key)) { results.push(entry); existing.add(key); }
+        }
+      }
+    } catch(e) {}
+  }
+
+  // find examples for each entry
+  for (const entry of results) {
+    entry.examples = findExamples(entry);
+  }
+
+  return results;
+}
+
+function parseRow(row) {
+  return {
+    kanji: row[0] ? row[0].split(',') : [],
+    readings: row[1] ? row[1].split(',') : [],
+    senses: JSON.parse(row[2]),
+    examples: []
+  };
+}
+
+function findExamples(entry) {
+  const terms = [...entry.kanji, ...entry.readings].filter(t => t.length > 1);
+  if (!terms.length) return [];
+  const conditions = terms.slice(0, 3).map(t => `ja LIKE '%${t.replace(/'/g, "''")}%'`).join(' OR ');
+  try {
+    const res = db.exec(`SELECT ja, zh FROM sentences WHERE ${conditions} LIMIT 3`);
+    if (res.length && res[0].values.length) {
+      return res[0].values.map(r => ({ ja: r[0], zh: r[1] }));
+    }
+  } catch(e) {}
+  return [];
+}
+
+function render(entries) {
+  const el = document.getElementById('results');
+  const countEl = document.getElementById('count');
+  if (!entries.length) {
+    el.innerHTML = '<p class="empty">未找到结果</p>';
+    countEl.innerHTML = '';
+    return;
+  }
+  countEl.innerHTML = entries.length + ' 件';
+  el.innerHTML = entries.map(e => {
+    const head = '<div class="head">'
+      + (e.kanji.length ? '<span class="kanji">' + esc(e.kanji.join('、')) + '</span>' : '')
+      + '<span class="reading">' + esc(e.readings.join('、')) + '</span>'
+      + '</div>';
+
+    const senses = e.senses.map((s, i) => {
+      const pos = s.pos.length ? '<div class="pos">' + esc(s.pos.join(', ')) + '</div>' : '';
+      const zh = s.zh && s.zh.length && s.zh[0]
+        ? '<div class="gloss-zh">' + (i+1) + '. ' + esc(s.zh.join('; ')) + '</div>'
+        : '';
+      const en = '<div class="gloss-en">' + esc(s.en.join('; ')) + '</div>';
+      return '<div class="sense">' + pos + zh + en + '</div>';
+    }).join('');
+
+    let examples = '';
+    if (e.examples && e.examples.length) {
+      examples = '<div class="examples">' + e.examples.map(ex =>
+        '<div class="example"><span class="ja">' + esc(ex.ja) + '</span><span class="zh">' + esc(ex.zh) + '</span></div>'
+      ).join('') + '</div>';
+    }
+
+    return '<div class="entry">' + head + senses + examples + '</div>';
+  }).join('');
+}
+
+function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+</script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+node_modules/
+dist/
+*.db
+data/*.csv
+data/*.log
+.claude/
+.DS_Store
+
+# Large source data — download from JMdict project
+/jmdict-all-*.json
+/JMdict.xml
+/JMdict_e.xml
