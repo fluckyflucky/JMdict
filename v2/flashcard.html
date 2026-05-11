@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JMdict - 単語カード</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif;
+  background: linear-gradient(135deg, #f5f7fa 0%, #e8ecf1 100%);
+  min-height: 100vh;
+  color: #333;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px;
+}
+.container {
+  max-width: 520px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.card {
+  background: white;
+  border-radius: 16px;
+  padding: 40px 32px 32px;
+  width: 100%;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+  cursor: pointer;
+  transition: transform 0.3s ease, opacity 0.3s ease;
+  position: relative;
+  min-height: 360px;
+  display: flex;
+  flex-direction: column;
+}
+.card.slide-out {
+  transform: translateX(-30px);
+  opacity: 0;
+}
+.card.slide-in {
+  transform: translateX(30px);
+  opacity: 0;
+}
+.card.revealed { cursor: default; }
+
+.word-section { text-align: center; margin-bottom: 20px; }
+.kanji {
+  font-size: 36px;
+  font-weight: 700;
+  color: #1a1a1a;
+  line-height: 1.3;
+}
+.reading {
+  font-size: 16px;
+  color: #999;
+  margin-top: 4px;
+}
+.no-kanji .kanji { font-size: 32px; }
+.no-kanji .reading { display: none; }
+
+.sentence-section {
+  background: #f8f9fc;
+  border-radius: 12px;
+  padding: 16px;
+  margin: 8px 0 4px;
+  text-align: center;
+  flex: 1;
+}
+.sentence-label {
+  font-size: 11px;
+  color: #bbb;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 8px;
+}
+.sentence-ja {
+  font-size: 16px;
+  line-height: 1.8;
+  color: #333;
+}
+.sentence-ja mark {
+  background: none;
+  color: #e74c3c;
+  font-weight: 600;
+}
+.sentence-zh {
+  font-size: 14px;
+  color: #888;
+  margin-top: 6px;
+}
+.sentence-zh.hidden { display: none; }
+
+.meanings {
+  margin-top: 4px;
+  padding-top: 16px;
+  border-top: 1px solid #f0f0f0;
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.4s ease, opacity 0.3s ease;
+  opacity: 0;
+}
+.meanings.show {
+  max-height: 400px;
+  opacity: 1;
+}
+.pos {
+  font-size: 11px;
+  color: #aaa;
+  font-style: italic;
+  margin-bottom: 4px;
+}
+.gloss-en {
+  font-size: 14px;
+  color: #555;
+  margin-bottom: 2px;
+}
+.gloss-zh {
+  font-size: 16px;
+  color: #222;
+  font-weight: 500;
+}
+
+.tap-hint {
+  text-align: center;
+  color: #ccc;
+  font-size: 13px;
+  margin-top: 16px;
+  transition: opacity 0.3s;
+}
+.tap-hint.hidden { opacity: 0; }
+
+.actions {
+  width: 100%;
+  margin-top: 16px;
+  display: flex;
+  gap: 10px;
+}
+.actions button {
+  flex: 1;
+  padding: 14px;
+  font-size: 16px;
+  font-weight: 500;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.1s;
+}
+.actions button:active { transform: scale(0.97); }
+.btn-next {
+  background: #5b8def;
+  color: white;
+}
+.btn-next:hover { background: #4a7de0; }
+.btn-next:disabled {
+  background: #d0d0d0;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.status {
+  text-align: center;
+  color: #ccc;
+  font-size: 12px;
+  margin-top: 12px;
+}
+
+.loading {
+  text-align: center;
+  color: #999;
+  margin-top: 60px;
+  font-size: 16px;
+}
+.error-state {
+  text-align: center;
+  color: #999;
+  margin-top: 40px;
+  font-size: 15px;
+  line-height: 1.6;
+}
+.empty {
+  text-align: center;
+  color: #aaa;
+  margin-top: 40px;
+  font-size: 15px;
+}
+
+@media (max-width: 600px) {
+  body { padding: 12px; }
+  .card { padding: 28px 20px 24px; min-height: 300px; }
+  .kanji { font-size: 30px; }
+  .reading { font-size: 14px; }
+  .sentence-ja { font-size: 15px; }
+}
+</style>
+</head>
+<body>
+<div class="container">
+  <div style="display:flex;gap:4px;margin-bottom:20px;background:#eef0f4;border-radius:12px;padding:4px;width:100%">
+    <a href="index.html" style="flex:1;text-align:center;padding:10px 16px;border-radius:10px;background:transparent;color:#888;text-decoration:none;font-weight:500;font-size:15px;transition:background 0.2s">搜索</a>
+    <a href="flashcard.html" style="flex:1;text-align:center;padding:10px 16px;border-radius:10px;background:white;color:#333;text-decoration:none;font-weight:600;font-size:15px;box-shadow:0 1px 3px rgba(0,0,0,0.08)">单词卡片</a>
+  </div>
+
+  <div id="card" class="card" onclick="onCardTap()">
+    <div id="loading" class="loading">Loading dictionary...</div>
+  </div>
+
+  <div class="actions" id="actions" style="display:none">
+    <button class="btn-next" id="nextBtn" onclick="nextCard()">下一张 →</button>
+  </div>
+  <div class="status" id="status"></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.11.0/sql-wasm.min.js"></script>
+<script>
+let db = null;
+const CACHE_TARGET = 6;
+let entryCache = [];
+let currentEntry = null;
+let isRevealed = false;
+let totalEntries = 0;
+
+// ——— Init ———
+
+async function initDB() {
+  const SQL = await initSqlJs({
+    locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.11.0/${file}`
+  });
+  const response = await fetch('dict.db');
+  const buf = await response.arrayBuffer();
+  db = new SQL.Database(new Uint8Array(buf));
+  totalEntries = db.exec("SELECT COUNT(*) FROM entries")[0].values[0][0];
+
+  document.getElementById('loading').textContent = 'Loading words...';
+  document.getElementById('actions').style.display = 'flex';
+
+  await ensureCache(CACHE_TARGET);
+  if (entryCache.length > 0) {
+    showCard();
+  } else {
+    document.getElementById('loading').innerHTML =
+      '<div class="empty">No words with example sentences found. Try again later.</div>';
+  }
+}
+
+initDB();
+
+// ——— Cache ———
+
+async function ensureCache(minCount) {
+  while (entryCache.length < minCount) {
+    const batch = getRandomBatch(40);
+    for (const entry of batch) {
+      if (entry.examples.length > 0) {
+        entryCache.push(entry);
+        if (entryCache.length >= minCount) break;
+      }
+    }
+  }
+  updateStatus();
+}
+
+function getRandomBatch(size) {
+  const ids = new Set();
+  while (ids.size < size) {
+    ids.add(Math.floor(Math.random() * totalEntries) + 1);
+  }
+  const idList = [...ids];
+  const stmt = db.prepare("SELECT rowid, kanji, readings, senses_json, examples_json FROM entries WHERE rowid = ?");
+  const results = [];
+  for (const id of idList) {
+    stmt.bind([id]);
+    if (stmt.step()) {
+      const row = stmt.get();
+      results.push({
+        rowid: row[0],
+        kanji: row[1] ? row[1].split(',') : [],
+        readings: row[2] ? row[2].split(',') : [],
+        senses: JSON.parse(row[3]),
+        examples: row[4] ? JSON.parse(row[4]) : [],
+      });
+    }
+    stmt.reset();
+  }
+  stmt.free();
+  return results;
+}
+
+function highlightSentence(sentence, kanjiArr, readingsArr) {
+  const candidates = [...new Set(
+    [...kanjiArr, ...readingsArr].filter(t => {
+      if (/^[぀-ゟ゠-ヿ]+$/.test(t)) return t.length >= 3;
+      return t.length > 0;
+    })
+  )].sort((a, b) => b.length - a.length);
+  let result = sentence;
+  for (const c of candidates) {
+    result = result.replaceAll(c, '<mark>$&</mark>');
+  }
+  return result;
+}
+
+// ——— Card display ———
+
+function showCard() {
+  if (entryCache.length === 0) return;
+
+  // De-dup: don't show the same word twice in a row
+  if (currentEntry && entryCache.length > 1) {
+    const sameIdx = entryCache.findIndex(e =>
+      e.rowid === currentEntry.rowid
+    );
+    if (sameIdx === 0 && entryCache.length > 1) {
+      [entryCache[0], entryCache[1]] = [entryCache[1], entryCache[0]];
+    }
+  }
+
+  currentEntry = entryCache.shift();
+  isRevealed = false;
+
+  const card = document.getElementById('card');
+  card.classList.remove('slide-out', 'revealed');
+  card.classList.add('slide-in');
+  setTimeout(() => card.classList.remove('slide-in'), 50);
+
+  const { kanji, readings, senses, examples } = currentEntry;
+  const word = kanji.length > 0 ? kanji[0] : readings[0];
+  const hasKanji = kanji.length > 0;
+  const sentenceEx = examples[0];
+  const sentenceEx2 = examples[1];
+
+  let html = '';
+
+  // Word
+  let wordClass = 'word-section' + (hasKanji ? '' : ' no-kanji');
+  html += `<div class="${wordClass}">`;
+  if (hasKanji) {
+    html += `<div class="kanji">${esc(word)}</div>`;
+    html += `<div class="reading">${esc(readings.join('、'))}</div>`;
+  } else {
+    html += `<div class="kanji">${esc(word)}</div>`;
+  }
+  html += '</div>';
+
+  // Sentence (zh initially hidden)
+  if (sentenceEx) {
+    html += '<div class="sentence-section">';
+    html += '<div class="sentence-label">例文</div>';
+    html += `<div class="sentence-ja">${highlightSentence(esc(sentenceEx.ja), kanji, readings)}</div>`;
+    html += `<div id="sentenceZh" class="sentence-zh hidden">${esc(sentenceEx.zh)}</div>`;
+    if (sentenceEx2) {
+      html += `<div class="sentence-ja" style="margin-top:10px">${highlightSentence(esc(sentenceEx2.ja), kanji, readings)}</div>`;
+      html += `<div class="sentence-zh hidden">${esc(sentenceEx2.zh)}</div>`;
+    }
+    html += '</div>';
+  }
+
+  // Meanings (hidden until tap)
+  html += '<div id="meanings" class="meanings">';
+  for (const s of senses.slice(0, 4)) {
+    html += '<div style="margin-bottom:8px">';
+    if (s.pos && s.pos.length) {
+      html += `<div class="pos">${esc(s.pos.join(', '))}</div>`;
+    }
+    if (s.zh && s.zh.length && s.zh[0]) {
+      html += `<div class="gloss-zh">${esc(s.zh.join('；'))}</div>`;
+    }
+    html += `<div class="gloss-en">${esc(s.en.join('; '))}</div>`;
+    html += '</div>';
+  }
+  if (senses.length > 4) {
+    html += `<div class="pos" style="margin-top:4px">+${senses.length - 4} more senses</div>`;
+  }
+  html += '</div>';
+
+  // Tap hint
+  html += '<div id="tapHint" class="tap-hint">点击卡片查看释义</div>';
+
+  card.innerHTML = html;
+  document.getElementById('nextBtn').disabled = false;
+  updateStatus();
+
+  // Prefetch more entries
+  if (entryCache.length <= 2) {
+    ensureCache(CACHE_TARGET);
+  }
+}
+
+function onCardTap() {
+  if (!currentEntry || isRevealed) return;
+  isRevealed = true;
+
+  // Show sentence translations
+  document.querySelectorAll('.sentence-zh.hidden').forEach(el => el.classList.remove('hidden'));
+
+  // Show definitions
+  document.getElementById('meanings').classList.add('show');
+  document.getElementById('tapHint').classList.add('hidden');
+  document.getElementById('card').classList.add('revealed');
+}
+
+function nextCard() {
+  if (document.getElementById('nextBtn').disabled) return;
+
+  const card = document.getElementById('card');
+  card.classList.add('slide-out');
+  document.getElementById('nextBtn').disabled = true;
+
+  setTimeout(() => {
+    if (entryCache.length > 0) {
+      showCard();
+    } else {
+      card.innerHTML = '<div class="loading">Loading...</div>';
+      ensureCache(1).then(() => {
+        if (entryCache.length > 0) showCard();
+        else card.innerHTML = '<div class="error-state">No words found. Try again.</div>';
+      });
+    }
+  }, 300);
+}
+
+function updateStatus() {
+  const el = document.getElementById('status');
+  el.textContent = entryCache.length > 0 ? `卡片缓存: ${entryCache.length}` : '';
+}
+
+function esc(s) {
+  if (typeof s !== 'string') return '';
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+</script>
+</body>
+</html>

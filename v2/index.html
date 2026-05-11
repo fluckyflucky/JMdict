@@ -46,7 +46,11 @@ button:hover { background: #4a7de0; }
 </head>
 <body>
 <div class="container">
-<h1>JMdict</h1>
+<div style="display:flex;gap:4px;margin-bottom:20px;background:#eef0f4;border-radius:12px;padding:4px">
+  <a href="index.html" style="flex:1;text-align:center;padding:10px 16px;border-radius:10px;background:white;color:#333;text-decoration:none;font-weight:600;font-size:15px;box-shadow:0 1px 3px rgba(0,0,0,0.08)">搜索</a>
+  <a href="flashcard.html" style="flex:1;text-align:center;padding:10px 16px;border-radius:10px;background:transparent;color:#888;text-decoration:none;font-weight:500;font-size:15px;transition:background 0.2s">单词卡片</a>
+</div>
+<h1 style="text-align:center;margin-bottom:24px;font-size:28px;color:#1a1a1a">JMdict</h1>
 <div class="search-box">
   <input id="q" type="text" placeholder="日本語・中文・English..." autofocus disabled>
   <select id="limit">
@@ -108,7 +112,7 @@ function search(query, limit) {
 
   // 1. Prefix match on kanji/readings (uses index)
   const prefix = db.exec(
-    "SELECT kanji, readings, senses_json FROM entries WHERE kanji LIKE ? OR readings LIKE ? OR romaji LIKE ? LIMIT ?",
+    "SELECT kanji, readings, senses_json, examples_json FROM entries WHERE kanji LIKE ? OR readings LIKE ? OR romaji LIKE ? LIMIT ?",
     [q + '%', q + '%', q + '%', limit]
   );
   if (prefix.length && prefix[0].values.length) {
@@ -122,7 +126,7 @@ function search(query, limit) {
     try {
       const existing = new Set(results.map(r => r.kanji.join(',') + r.readings.join(',')));
       const fts = db.exec(
-        `SELECT e.kanji, e.readings, e.senses_json FROM entries_fts f
+        `SELECT e.kanji, e.readings, e.senses_json, e.examples_json FROM entries_fts f
          JOIN entries e ON e.rowid = f.rowid
          WHERE entries_fts MATCH '"${ftsQuery}"'
          LIMIT ?`,
@@ -151,21 +155,12 @@ function parseRow(row) {
     kanji: row[0] ? row[0].split(',') : [],
     readings: row[1] ? row[1].split(',') : [],
     senses: JSON.parse(row[2]),
-    examples: []
+    examples: row[3] ? JSON.parse(row[3]) : [],
   };
 }
 
 function findExamples(entry) {
-  const terms = [...entry.kanji, ...entry.readings].filter(t => t.length > 1);
-  if (!terms.length) return [];
-  const conditions = terms.slice(0, 3).map(t => `ja LIKE '%${t.replace(/'/g, "''")}%'`).join(' OR ');
-  try {
-    const res = db.exec(`SELECT ja, zh FROM sentences WHERE ${conditions} LIMIT 3`);
-    if (res.length && res[0].values.length) {
-      return res[0].values.map(r => ({ ja: r[0], zh: r[1] }));
-    }
-  } catch(e) {}
-  return [];
+  return entry.examples || [];
 }
 
 function render(entries) {
