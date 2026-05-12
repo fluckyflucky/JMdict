@@ -9,12 +9,10 @@
 body { font-family: "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif; background: #fafafa; padding: 20px; color: #333; }
 .container { max-width: 720px; margin: 0 auto; }
 h1 { text-align: center; margin-bottom: 24px; font-size: 28px; color: #1a1a1a; }
-.search-box { display: flex; gap: 8px; margin-bottom: 24px; position: sticky; top: 0; z-index: 10; background: #fafafa; padding: 12px 0; }
+.search-box { display: flex; gap: 8px; margin-bottom: 20px; position: sticky; top: 0; z-index: 10; background: #fafafa; padding: 12px 0; }
 input { flex: 1; padding: 14px 18px; font-size: 18px; border: 2px solid #e0e0e0; border-radius: 10px; outline: none; transition: border-color 0.2s; min-width: 0; }
 input:focus { border-color: #5b8def; }
 select { padding: 10px 12px; font-size: 14px; border: 2px solid #e0e0e0; border-radius: 10px; outline: none; background: white; color: #555; }
-button { padding: 14px 28px; font-size: 16px; background: #5b8def; color: white; border: none; border-radius: 10px; cursor: pointer; font-weight: 500; transition: background 0.2s; white-space: nowrap; }
-button:hover { background: #4a7de0; }
 .entry { background: white; border-radius: 10px; padding: 18px; margin-bottom: 14px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
 .head { margin-bottom: 10px; }
 .kanji { font-size: 26px; font-weight: bold; color: #1a1a1a; }
@@ -28,19 +26,30 @@ button:hover { background: #4a7de0; }
 .example .ja { display: block; color: #333; }
 .example .zh { display: block; color: #666; }
 .empty { text-align: center; color: #aaa; margin-top: 60px; font-size: 16px; }
-.count { text-align: center; color: #bbb; font-size: 13px; margin-bottom: 12px; }
-.loading { text-align: center; color: #999; margin-top: 60px; font-size: 16px; }
+
+/* Pagination */
+.toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+.count { color: #aaa; font-size: 13px; }
+.pagination { display: flex; align-items: center; gap: 2px; }
+.pagination button {
+  padding: 4px 9px; font-size: 13px; border: 1px solid #e0e0e0; background: white; color: #555;
+  border-radius: 6px; cursor: pointer; transition: all 0.15s; line-height: 1;
+}
+.pagination button:hover:not(:disabled) { background: #5b8def; border-color: #5b8def; color: white; }
+.pagination button.active { background: #5b8def; border-color: #5b8def; color: white; font-weight: 600; }
+.pagination button:disabled { opacity: 0.3; cursor: not-allowed; }
+.pagination .ellipsis { padding: 4px 4px; font-size: 13px; color: #bbb; }
 
 @media (max-width: 600px) {
   body { padding: 12px; }
   h1 { font-size: 22px; margin-bottom: 16px; }
-  .search-box { flex-wrap: wrap; gap: 6px; }
+  .search-box { gap: 6px; }
   input { font-size: 16px; padding: 12px 14px; }
   select { flex: 1; }
-  button { flex: 1; padding: 12px; }
   .entry { padding: 14px; margin-bottom: 10px; }
   .kanji { font-size: 22px; }
   .reading { font-size: 14px; }
+  .pagination button { padding: 4px 7px; font-size: 12px; }
 }
 </style>
 </head>
@@ -48,11 +57,10 @@ button:hover { background: #4a7de0; }
 <div class="container">
 <div style="display:flex;gap:4px;margin-bottom:20px;background:#eef0f4;border-radius:12px;padding:4px">
   <a href="index.html" style="flex:1;text-align:center;padding:10px 16px;border-radius:10px;background:white;color:#333;text-decoration:none;font-weight:600;font-size:15px;box-shadow:0 1px 3px rgba(0,0,0,0.08)">搜索</a>
-  <a href="flashcard.html" style="flex:1;text-align:center;padding:10px 16px;border-radius:10px;background:transparent;color:#888;text-decoration:none;font-weight:500;font-size:15px;transition:background 0.2s">单词卡片</a>
+  <a href="flashcard.html" style="flex:1;text-align:center;padding:10px 16px;border-radius:10px;background:transparent;color:#888;text-decoration:none;font-weight:500;font-size:15px">单词卡片</a>
 </div>
-<h1 style="text-align:center;margin-bottom:24px;font-size:28px;color:#1a1a1a">JMdict</h1>
 <div class="search-box">
-  <input id="q" type="text" placeholder="日本語・中文・English..." autofocus disabled>
+  <input id="q" type="text" placeholder="日本語・ローマ字..." autofocus>
   <select id="limit">
     <option value="20">20件</option>
     <option value="50" selected>50件</option>
@@ -60,142 +68,231 @@ button:hover { background: #4a7de0; }
     <option value="200">200件</option>
     <option value="500">500件</option>
   </select>
-  <button onclick="doSearch()" disabled id="btn">検索</button>
 </div>
-<div id="count"></div>
-<div id="results"><p class="loading">Loading dictionary...</p></div>
+<div id="toolbar" class="toolbar" style="display:none">
+  <div id="count" class="count"></div>
+  <div id="pagination" class="pagination"></div>
 </div>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.11.0/sql-wasm.min.js"></script>
-<script>
-let db = null;
+<div id="results"><p class="empty">输入关键词开始搜索</p></div>
+</div>
 
-async function initDB() {
-  const SQL = await initSqlJs({
-    locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.11.0/${file}`
-  });
-  const response = await fetch('dict.db');
-  const buf = await response.arrayBuffer();
-  db = new SQL.Database(new Uint8Array(buf));
-  document.getElementById('q').disabled = false;
-  document.getElementById('btn').disabled = false;
-  document.getElementById('results').innerHTML = '';
-  document.getElementById('q').focus();
+<script src="https://unpkg.com/wanakana@5.3.1/umd/wanakana.min.js"></script>
+<script>
+const input = document.getElementById('q');
+const resultsEl = document.getElementById('results');
+const countEl = document.getElementById('count');
+const toolbarEl = document.getElementById('toolbar');
+const paginationEl = document.getElementById('pagination');
+
+// Cache loaded JSON files
+const fileCache = new Map();
+async function fetchJSON(url) {
+  if (fileCache.has(url)) return fileCache.get(url);
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error('not found');
+  const data = await resp.json();
+  fileCache.set(url, data);
+  return data;
 }
 
-initDB();
+function isKana(ch) { return /^[぀-ゟ゠-ヿ]$/.test(ch); }
+function isKanji(ch) { return /^[\p{Script=Han}]$/u.test(ch); }
 
-const input = document.getElementById('q');
-input.addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(); });
+function getRomajiPrefix(text) {
+  const r = wanakana.toRomaji(text).toLowerCase().replace(/[^a-z]/g, '');
+  return r.slice(0, 2);
+}
+
+function matchesPrefix(entry, q, field) {
+  return entry[field].some(v => v.toLowerCase().startsWith(q.toLowerCase()));
+}
+
+let page = 1;
+let totalPages = 0;
 
 let timer;
 input.addEventListener('input', () => {
   clearTimeout(timer);
-  timer = setTimeout(doSearch, 300);
+  page = 1;
+  timer = setTimeout(doSearch, 200);
+});
+input.addEventListener('keydown', e => { if (e.key === 'Enter') { clearTimeout(timer); page = 1; doSearch(); } });
+
+document.getElementById('limit').addEventListener('change', () => {
+  page = 1;
+  doSearch();
 });
 
-function doSearch() {
-  if (!db) return;
+// Keep old results visible while loading to prevent flicker
+let lastRendered = '';
+let lastPaginationRendered = '';
+
+async function doSearch() {
   const q = input.value.trim();
   if (!q) {
-    document.getElementById('results').innerHTML = '';
-    document.getElementById('count').innerHTML = '';
+    resultsEl.innerHTML = '<p class="empty">输入关键词开始搜索</p>';
+    toolbarEl.style.display = 'none';
+    lastRendered = '';
+    lastPaginationRendered = '';
     return;
   }
+
   const limit = parseInt(document.getElementById('limit').value);
-  const entries = search(q, limit);
-  render(entries);
-}
+  const seen = new Set();
+  const all = [];
+  const firstChar = q[0];
+  let prefixes = [];
 
-function search(query, limit) {
-  const results = [];
-  const q = query.replace(/'/g, "''");
-
-  // 1. Prefix match on kanji/readings (uses index)
-  const prefix = db.exec(
-    "SELECT kanji, readings, senses_json, examples_json FROM entries WHERE kanji LIKE ? OR readings LIKE ? OR romaji LIKE ? LIMIT ?",
-    [q + '%', q + '%', q + '%', limit]
-  );
-  if (prefix.length && prefix[0].values.length) {
-    for (const row of prefix[0].values) results.push(parseRow(row));
+  if (isKanji(firstChar)) {
+    try {
+      const km = await fetchJSON('jmdict/kanji-map.json');
+      prefixes = km[firstChar] || km[q.slice(0, 2)] || [];
+    } catch(e) { prefixes = []; }
+  } else if (isKana(firstChar)) {
+    prefixes = [getRomajiPrefix(firstChar)];
+  } else {
+    prefixes = [q.slice(0, 2).toLowerCase().replace(/[^a-z]/g, '')];
   }
 
-  // 2. FTS search for English/Chinese
-  if (results.length < limit) {
-    const remaining = limit - results.length;
-    const ftsQuery = query.replace(/['"]/g, '');
+  // Subtle loading hint
+  const needFetch = prefixes.some(p => !fileCache.has(`jmdict/ro/${p}.json`));
+  if (needFetch && lastRendered) {
+    countEl.textContent = '検索中...';
+  }
+
+  const pageStart = (page - 1) * limit;
+  let totalMatches = 0;
+
+  for (const prefix of prefixes) {
     try {
-      const existing = new Set(results.map(r => r.kanji.join(',') + r.readings.join(',')));
-      const fts = db.exec(
-        `SELECT e.kanji, e.readings, e.senses_json, e.examples_json FROM entries_fts f
-         JOIN entries e ON e.rowid = f.rowid
-         WHERE entries_fts MATCH '"${ftsQuery}"'
-         LIMIT ?`,
-        [remaining]
-      );
-      if (fts.length && fts[0].values.length) {
-        for (const row of fts[0].values) {
-          const entry = parseRow(row);
-          const key = entry.kanji.join(',') + entry.readings.join(',');
-          if (!existing.has(key)) { results.push(entry); existing.add(key); }
+      const entries = await fetchJSON(`jmdict/ro/${prefix}.json`);
+
+      for (const entry of entries) {
+        const key = entry.k.join(',') + '|' + entry.r.join(',');
+
+        if (seen.has(key)) continue;
+
+        let match = false;
+        if (isKanji(firstChar)) {
+          match = matchesPrefix(entry, q, 'k');
+        } else if (isKana(firstChar)) {
+          match = matchesPrefix(entry, q, 'r');
+        } else {
+          match = entry.o.some(o => o.toLowerCase().startsWith(q.toLowerCase()));
+          if (!match) match = matchesPrefix(entry, q, 'k') || matchesPrefix(entry, q, 'r');
+        }
+
+        if (match) {
+          seen.add(key);
+          totalMatches++;
+          if (totalMatches > pageStart && all.length < limit) {
+            all.push(entry);
+          }
         }
       }
     } catch(e) {}
   }
 
-  // find examples for each entry
-  for (const entry of results) {
-    entry.examples = findExamples(entry);
-  }
-
-  return results;
+  totalPages = Math.ceil(totalMatches / limit);
+  render(all, totalMatches);
+  renderPagination();
 }
 
-function parseRow(row) {
-  return {
-    kanji: row[0] ? row[0].split(',') : [],
-    readings: row[1] ? row[1].split(',') : [],
-    senses: JSON.parse(row[2]),
-    examples: row[3] ? JSON.parse(row[3]) : [],
-  };
+function goToPage(n) {
+  if (n < 1 || n > totalPages) return;
+  page = n;
+  doSearch();
 }
 
-function findExamples(entry) {
-  return entry.examples || [];
-}
-
-function render(entries) {
-  const el = document.getElementById('results');
-  const countEl = document.getElementById('count');
-  if (!entries.length) {
-    el.innerHTML = '<p class="empty">未找到结果</p>';
-    countEl.innerHTML = '';
+function renderPagination() {
+  if (totalPages <= 1) {
+    paginationEl.innerHTML = '';
+    toolbarEl.style.display = 'none';
     return;
   }
-  countEl.innerHTML = entries.length + ' 件';
-  el.innerHTML = entries.map(e => {
+  toolbarEl.style.display = 'flex';
+
+  let html = '';
+  const tp = totalPages;
+  const cp = page;
+
+  // First + Prev
+  html += '<button onclick="goToPage(1)" ' + (cp === 1 ? 'disabled' : '') + '>&laquo;</button>';
+  html += '<button onclick="goToPage(' + (cp - 1) + ')" ' + (cp === 1 ? 'disabled' : '') + '>&lsaquo;</button>';
+
+  // Page numbers
+  const pages = [];
+  if (tp <= 7) {
+    for (let i = 1; i <= tp; i++) pages.push(i);
+  } else {
+    pages.push(1);
+    if (cp > 3) pages.push('...');
+    const start = Math.max(2, cp - 1);
+    const end = Math.min(tp - 1, cp + 1);
+    for (let i = start; i <= end; i++) pages.push(i);
+    if (cp < tp - 2) pages.push('...');
+    pages.push(tp);
+  }
+
+  for (const p of pages) {
+    if (p === '...') {
+      html += '<span class="ellipsis">...</span>';
+    } else {
+      html += '<button class="' + (p === cp ? 'active' : '') + '" onclick="goToPage(' + p + ')">' + p + '</button>';
+    }
+  }
+
+  // Next + Last
+  html += '<button onclick="goToPage(' + (cp + 1) + ')" ' + (cp === tp ? 'disabled' : '') + '>&rsaquo;</button>';
+  html += '<button onclick="goToPage(' + tp + ')" ' + (cp === tp ? 'disabled' : '') + '>&raquo;</button>';
+
+  // Only update if changed — prevents flicker
+  if (html !== lastPaginationRendered) {
+    paginationEl.innerHTML = html;
+    lastPaginationRendered = html;
+  }
+}
+
+function render(entries, total) {
+  if (!entries.length) {
+    resultsEl.innerHTML = '<p class="empty">未找到结果</p>';
+    countEl.textContent = '';
+    toolbarEl.style.display = 'none';
+    lastRendered = '';
+    lastPaginationRendered = '';
+    return;
+  }
+  countEl.textContent = total + ' 件';
+  const html = entries.map(e => {
     const head = '<div class="head">'
-      + (e.kanji.length ? '<span class="kanji">' + esc(e.kanji.join('、')) + '</span>' : '')
-      + '<span class="reading">' + esc(e.readings.join('、')) + '</span>'
+      + (e.k.length ? '<span class="kanji">' + esc(e.k.join('、')) + '</span>' : '')
+      + '<span class="reading">' + esc(e.r.join('、')) + '</span>'
       + '</div>';
 
-    const senses = e.senses.map((s, i) => {
-      const pos = s.pos.length ? '<div class="pos">' + esc(s.pos.join(', ')) + '</div>' : '';
-      const zh = s.zh && s.zh.length && s.zh[0]
-        ? '<div class="gloss-zh">' + (i+1) + '. ' + esc(s.zh.join('; ')) + '</div>'
+    const senses = e.s.map((s, i) => {
+      const pos = s.p && s.p.length ? '<div class="pos">' + esc(s.p.join(', ')) + '</div>' : '';
+      const zh = s.z && s.z.length && s.z[0]
+        ? '<div class="gloss-zh">' + (i+1) + '. ' + esc(s.z.join('; ')) + '</div>'
         : '';
-      const en = '<div class="gloss-en">' + esc(s.en.join('; ')) + '</div>';
+      const en = '<div class="gloss-en">' + esc(s.e.join('; ')) + '</div>';
       return '<div class="sense">' + pos + zh + en + '</div>';
     }).join('');
 
     let examples = '';
-    if (e.examples && e.examples.length) {
-      examples = '<div class="examples">' + e.examples.map(ex =>
-        '<div class="example"><span class="ja">' + esc(ex.ja) + '</span><span class="zh">' + esc(ex.zh) + '</span></div>'
+    if (e.x && e.x.length) {
+      examples = '<div class="examples">' + e.x.map(ex =>
+        '<div class="example"><span class="ja">' + esc(ex.j) + '</span><span class="zh">' + esc(ex.c) + '</span></div>'
       ).join('') + '</div>';
     }
 
     return '<div class="entry">' + head + senses + examples + '</div>';
   }).join('');
+
+  // Only update DOM if content changed — prevents flicker
+  if (html !== lastRendered) {
+    resultsEl.innerHTML = html;
+    lastRendered = html;
+  }
 }
 
 function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
